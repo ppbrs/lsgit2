@@ -1,5 +1,27 @@
+use colored::Colorize;
 use std::env;
+use std::ffi::OsStr;
+use std::fs;
 use std::path;
+use std::process::Command;
+use std::str::FromStr;
+
+fn check_dir(dir_path: &std::path::Path, check_dir_cnt: &mut i32, git_dir_vec: &mut Vec<std::path::PathBuf>) {
+    // An attribute of a git repository is a .git directory or a .git file.
+    *check_dir_cnt = *check_dir_cnt + 1;
+
+    let entries = dir_path.read_dir().unwrap();
+    for entry in entries {
+    //     let entry = entry.unwrap();
+        let path = entry.unwrap().path();
+        if path.file_name().unwrap() == ".git" {
+            // println!("GIT: {:?}", path.parent());
+            git_dir_vec.push(std::path::PathBuf::from_str( path.parent().unwrap().to_str().unwrap() ).unwrap());
+        } else if path.is_dir() {
+            check_dir(path.as_path(), check_dir_cnt, git_dir_vec);
+        }
+    }
+}
 
 fn main() {
     // Print basic information about the application.
@@ -31,5 +53,39 @@ fn main() {
         err_msg = format!("Expecting 0 or 1 arguments, {} were given.", args.len());
         Err(&err_msg[..])
     };
-    println!("Starting searching from `{}`", start_dir.unwrap().to_str().unwrap());
+    let start_dir = fs::canonicalize(&start_dir.unwrap()); // convert from relative to absolute
+    println!("Starting searching from `{}`", start_dir.as_ref().unwrap().to_str().unwrap());
+    // start_dir is Result<PathBuf, Error>
+    // start_dir.as_ref() converts from &Result<T, E> to Result<&T, &E>.
+
+    let mut check_dir_cnt: i32 = 0;
+    let mut git_dir_vec: Vec<std::path::PathBuf> = Vec::new();
+    check_dir(start_dir.as_ref().unwrap().as_path(), &mut check_dir_cnt, &mut git_dir_vec);
+    git_dir_vec.sort();use std::str;
+
+    println!("{} directories were checked, {} git repo(s) were found:", check_dir_cnt, git_dir_vec.len());
+
+    let start_dir_comp: Vec<&OsStr> = start_dir.as_ref().unwrap().iter().collect();
+
+    for git_dir in git_dir_vec.iter() {
+
+        let status_out = Command::new("git").args(["-C", git_dir.to_str().unwrap(), "status", "--branch", "--short"]).output().unwrap().stdout;
+        let status_str = str::from_utf8(&status_out).unwrap();
+        let status_str: Vec<&str> = status_str.split("\n").collect();
+        let status_str = status_str[0]; // For example "## HEAD (no branch)", or "## master...origin/master".
+
+        let git_dir_comp: Vec<&OsStr> = git_dir.iter().collect();
+        let mut git_dir = std::path::PathBuf::new();
+        for n in start_dir_comp.len()..git_dir_comp.len() {
+            git_dir.push(git_dir_comp[n]);
+        }
+
+        let mut indent = String::from("");
+        for _ in 0..(git_dir_comp.len() - start_dir_comp.len()) {
+            indent.push('\t');
+        }
+        // let git_dir_str = git_dir.to_str().unwrap();
+        let git_dir_str = git_dir_comp[git_dir_comp.len()-1].to_str().unwrap();
+        println!("{}{} {}.", indent, git_dir_str.white().bold(), status_str.green());
+    }
 }
