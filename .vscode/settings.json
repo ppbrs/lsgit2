@@ -1,7 +1,12 @@
 {
 	"editor.renderWhitespace": "all", // For showing whitespaces as dots.
 	"editor.multiCursorModifier": "alt", // To be able to do multiple selections with Alt+LeftClick.
-	"editor.autoClosingBrackets": false,
+	"editor.autoClosingBrackets": "never",
 	"workbench.panel.defaultLocation": "right",
-	"editor.rulers": [100, 100.5],
+	"editor.rulers": [
+		100,
+		100.5
+	],
+	"editor.autoClosingQuotes": "never",
+	"editor.autoSurround": "never",
 }
