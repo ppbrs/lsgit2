@@ -3,7 +3,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::str::FromStr;
 
 fn check_dir(dir_path: &std::path::Path, check_dir_cnt: &mut i32, git_dir_vec: &mut Vec<std::path::PathBuf>) {
@@ -68,6 +68,10 @@ fn main() {
     let start_dir_comp: Vec<&OsStr> = start_dir.as_ref().unwrap().iter().collect();
 
     for git_dir in git_dir_vec.iter() {
+
+        // Fetch repository updates in the background.
+        let _ = Command::new("git").args(["-C", git_dir.to_str().unwrap(), "fetch"])
+            .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn();
 
         let status_stdout = Command::new("git").args(["-C", git_dir.to_str().unwrap(), "status", "--branch", "--short"]).output().unwrap().stdout;
         let status_str = str::from_utf8(&status_stdout).unwrap();
