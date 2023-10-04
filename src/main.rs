@@ -69,8 +69,8 @@ fn main() {
 
     for git_dir in git_dir_vec.iter() {
 
-        let status_out = Command::new("git").args(["-C", git_dir.to_str().unwrap(), "status", "--branch", "--short"]).output().unwrap().stdout;
-        let status_str = str::from_utf8(&status_out).unwrap();
+        let status_stdout = Command::new("git").args(["-C", git_dir.to_str().unwrap(), "status", "--branch", "--short"]).output().unwrap().stdout;
+        let status_str = str::from_utf8(&status_stdout).unwrap();
         let status_str: Vec<&str> = status_str.split("\n").collect();
         let status_str = status_str[0]; // For example "## HEAD (no branch)", or "## master...origin/master".
 
@@ -80,9 +80,13 @@ fn main() {
             git_dir.push(git_dir_comp[n]);
         }
 
+        // git_dir is an absolute path to the git repository, for example /home/boris/projects/lsgit2
+        // start_dir is an absolute path to the search directory, for example /home/boris/projects/
         let mut indent = String::from("");
-        for _ in 0..(git_dir_comp.len() - start_dir_comp.len()) {
-            indent.push('\t');
+        for i in start_dir_comp.len()..(git_dir_comp.len() - 1) {
+            // indent.push('\t');
+            indent += git_dir_comp[i].to_str().unwrap();
+            indent += "/";
         }
         // let git_dir_str = git_dir.to_str().unwrap();
         let git_dir_str = git_dir_comp[git_dir_comp.len()-1].to_str().unwrap();
