@@ -4,6 +4,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path;
 use std::process::{Command, Stdio};
+use regex::Regex;
 use std::str::FromStr;
 
 fn check_dir(dir_path: &std::path::Path, check_dir_cnt: &mut i32, git_dir_vec: &mut Vec<std::path::PathBuf>) {
@@ -33,12 +34,13 @@ fn main() {
     println!("\tstarted from `{}`", exe_path_str);
     println!("\tcurrent working directory: `{}`", cwd_path_str);
 
-    // Only one optional argument is expected being the directory where to start the search.
+    // Only two optional argument are expected being the directory where to start the search
+    // and the regexp pattern for paths and branch names.
     let args: Vec<String> = env::args().collect();
     let err_msg: String;
     let start_dir = if args.len() == 1 {
         Ok(env::current_dir().unwrap())
-    } else if args.len() == 2 {
+    } else if args.len() == 2 || args.len() == 3 {
         let sd = path::PathBuf::from(&args[1]);
         if !sd.as_path().exists() {
             err_msg = format!("Path `{}` doesn't exist.", sd.to_str().unwrap());
@@ -50,7 +52,7 @@ fn main() {
             Ok(sd)
         }
     } else {
-        err_msg = format!("Expecting 0 or 1 arguments, {} were given.", args.len());
+        err_msg = format!("Expecting 0, 1, or 2 arguments, {} were given.", args.len());
         Err(&err_msg[..])
     };
     let start_dir = fs::canonicalize(&start_dir.unwrap()); // convert from relative to absolute
@@ -58,12 +60,18 @@ fn main() {
     // start_dir is Result<PathBuf, Error>
     // start_dir.as_ref() converts from &Result<T, E> to Result<&T, &E>.
 
+    let regex_pattern = if args.len() == 3 {
+        Regex::new(&args[2]).unwrap()
+    } else {
+        Regex::new(".*").unwrap()
+    };
+
     let mut check_dir_cnt: i32 = 0;
     let mut git_dir_vec: Vec<std::path::PathBuf> = Vec::new();
     check_dir(start_dir.as_ref().unwrap().as_path(), &mut check_dir_cnt, &mut git_dir_vec);
     git_dir_vec.sort();use std::str;
 
-    println!("{} directories were checked, {} git repo(s) were found:", check_dir_cnt, git_dir_vec.len());
+    println!("{} directories were checked, {} git repo(s) were found.", check_dir_cnt, git_dir_vec.len());
 
     let start_dir_comp: Vec<&OsStr> = start_dir.as_ref().unwrap().iter().collect();
 
@@ -92,8 +100,12 @@ fn main() {
             indent += git_dir_comp[i].to_str().unwrap();
             indent += "/";
         }
-        // let git_dir_str = git_dir.to_str().unwrap();
-        let git_dir_str = git_dir_comp[git_dir_comp.len()-1].to_str().unwrap();
-        println!("{}{} {}.", indent, git_dir_str.white().bold(), status_str.green());
+
+        // Filter git directories and git status strings.
+        if regex_pattern.is_match(git_dir.to_str().unwrap()) || regex_pattern.is_match(status_str) {
+            // let git_dir_str = git_dir.to_str().unwrap();
+            let git_dir_str = git_dir_comp[git_dir_comp.len()-1].to_str().unwrap();
+            println!("{}{} {}.", indent, git_dir_str.white().bold(), status_str.green());
+        }
     }
 }
