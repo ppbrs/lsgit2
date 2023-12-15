@@ -31,8 +31,8 @@ fn main() {
     let _cwd_path_buf = env::current_dir().unwrap();
     let cwd_path_str = _cwd_path_buf.to_str().unwrap();
     println!("lsgit2");
-    println!("\tstarted from `{}`", exe_path_str);
-    println!("\tcurrent working directory: `{}`", cwd_path_str);
+    println!("\tStarted from `{}`.", exe_path_str);
+    println!("\tCurrent working directory: `{}`.", cwd_path_str);
 
     // Only two optional argument are expected being the directory where to start the search
     // and the regexp pattern for paths and branch names.
@@ -52,11 +52,11 @@ fn main() {
             Ok(sd)
         }
     } else {
-        err_msg = format!("Expecting 0, 1, or 2 arguments, {} were given.", args.len());
+        err_msg = format!("Expecting 0, 1, or 2 arguments, {} arguments were given.", args.len());
         Err(&err_msg[..])
     };
     let start_dir = fs::canonicalize(&start_dir.unwrap()); // convert from relative to absolute
-    println!("Starting searching from `{}`", start_dir.as_ref().unwrap().to_str().unwrap());
+    println!("\tStarting searching from `{}`.", start_dir.as_ref().unwrap().to_str().unwrap());
     // start_dir is Result<PathBuf, Error>
     // start_dir.as_ref() converts from &Result<T, E> to Result<&T, &E>.
 
@@ -71,15 +71,28 @@ fn main() {
     check_dir(start_dir.as_ref().unwrap().as_path(), &mut check_dir_cnt, &mut git_dir_vec);
     git_dir_vec.sort();use std::str;
 
-    println!("{} directories were checked, {} git repo(s) were found.", check_dir_cnt, git_dir_vec.len());
+    match check_dir_cnt {
+        0 => println!("\tNo directories were checked."),
+        1 => println!("\t1 directory was checked."),
+        _ => println!("\t{} directories were checked.", check_dir_cnt)
+    }
+    let num_repos = git_dir_vec.len();
+    match num_repos {
+        0 => println!("\tNo git repositories were found."),
+        1 => println!("\t1 git repository was found."),
+        _ => println!("\t{} git repositories were found.", num_repos)
+    }
+    println!();
 
     let start_dir_comp: Vec<&OsStr> = start_dir.as_ref().unwrap().iter().collect();
 
+    // Fetch repository updates in the background.
     for git_dir in git_dir_vec.iter() {
-
-        // Fetch repository updates in the background.
         let _ = Command::new("git").args(["-C", git_dir.to_str().unwrap(), "fetch"])
             .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn();
+    }
+
+    for git_dir in git_dir_vec.iter() {
 
         let status_stdout = Command::new("git").args(["-C", git_dir.to_str().unwrap(), "status", "--branch", "--short"]).output().unwrap().stdout;
         let status_str = str::from_utf8(&status_stdout).unwrap();
