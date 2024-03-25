@@ -92,14 +92,31 @@ fn main() {
     }
 
     // Collect repo statuses.
-    let mut repo_statuses: Vec<String> = Vec::new();
+    let mut repo_snapshots: Vec<String> = Vec::new();
     for repo_abs_path in repo_abs_paths.iter() {
 
-        let status_stdout = Command::new("git").args(["-C", repo_abs_path.to_str().unwrap(), "status", "--branch", "--short"]).output().unwrap().stdout;
+        let status_stdout = Command::new("git").args(["-c", "color.ui=always", "-C", repo_abs_path.to_str().unwrap(), "status", "--branch", "--short"]).output().unwrap().stdout;
         let status_str = str::from_utf8(&status_stdout).unwrap();
         let status_str: Vec<&str> = status_str.split("\n").collect();
         let status_str = status_str[0]; // For example "## HEAD (no branch)", or "## master...origin/master".
-        repo_statuses.push(status_str.to_string());
+
+        let last_commit_stdout = Command::new("git").args(
+            [
+                "-c", "color.ui=always",
+                "-C", repo_abs_path.to_str().unwrap(),
+                "log", "-1",
+                "--pretty=format:%C(yellow)%h%C(reset), %s, %C(blue)%ae%C(reset), %C(magenta)%aI, %ar%C(reset)"
+            ]
+        ).output().unwrap().stdout;
+        let last_commit_str = str::from_utf8(&last_commit_stdout).unwrap();
+        let last_commit_str: Vec<&str> = last_commit_str.split("\n").collect();
+        let last_commit_str = last_commit_str[0]; // For example "159e31b6 Prepare 2.1.2 release"
+
+        let mut repo_snapshot = String::new();
+        repo_snapshot.push_str(status_str);
+        repo_snapshot.push_str(", ");
+        repo_snapshot.push_str(last_commit_str);
+        repo_snapshots.push(repo_snapshot);
     }
 
     // Collect relative repo paths.
@@ -120,7 +137,7 @@ fn main() {
     let mut current_dir_repo_name: String = "".to_string();
     for n in 0..repo_rel_paths.len() {
         let repo_rel_path: &std::path::PathBuf= &repo_rel_paths[n];
-        let repo_status: &str = &repo_statuses[n];
+        let repo_status: &str = &repo_snapshots[n];
         if regex_pattern.is_match(repo_rel_path.to_str().unwrap()) || regex_pattern.is_match(repo_status) {
             selected.push(true);
             let repo_rel_path_comps: Vec<&OsStr> = repo_rel_path.iter().collect();
@@ -147,14 +164,14 @@ fn main() {
     println!();
 
     // Sanity check.
-    if repo_abs_paths.len() != repo_rel_paths.len() || repo_abs_paths.len() != selected.len() || repo_abs_paths.len() != repo_statuses.len() {
+    if repo_abs_paths.len() != repo_rel_paths.len() || repo_abs_paths.len() != selected.len() || repo_abs_paths.len() != repo_snapshots.len() {
         panic!("There is a problem with logic.");
     }
 
     for n in 0..repo_rel_paths.len() {
         if selected[n] {
             let repo_rel_path: &std::path::PathBuf= &repo_rel_paths[n];
-            let repo_status: &str = &repo_statuses[n];
+            let repo_snapshot: &str = &repo_snapshots[n];
 
             let repo_rel_path_comps: Vec<&OsStr> = repo_rel_path.iter().collect();
             let mut indent: String = String::from("");
@@ -172,7 +189,7 @@ fn main() {
                 let repo_abs_path_comps: Vec<&OsStr> = repo_abs_paths[n].iter().collect();
                 repo_dir_str = repo_abs_path_comps[repo_abs_path_comps.len() - 1].to_str().unwrap();
             }
-            println!("{}{} {}.", indent, repo_dir_str.white().bold(), repo_status.green());
+            println!("{}{}    {}.", indent, repo_dir_str.white().bold(), repo_snapshot);
         }
     }
 }
