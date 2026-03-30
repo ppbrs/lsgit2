@@ -1,97 +1,84 @@
+use clap::Parser;
 use colored::Colorize;
 use regex::Regex;
 use std::env;
 use std::ffi::OsStr;
-use std::fs;
-use std::path;
+use std::path::PathBuf;
+use std::process;
 use std::process::{Command, Stdio};
-use std::str::FromStr;
 
-fn check_dir(
-    dir_path: &std::path::Path,
-    check_dir_cnt: &mut i32,
-    git_dir_vec: &mut Vec<std::path::PathBuf>,
-) {
-    // An attribute of a git repository is a .git directory or a .git file.
-    *check_dir_cnt = *check_dir_cnt + 1;
-
-    let entries = dir_path.read_dir().unwrap();
-    for entry in entries {
-        //     let entry = entry.unwrap();
-        let path = entry.unwrap().path();
-        if path.file_name().unwrap() == ".git" {
-            // println!("GIT: {:?}", path.parent());
-            git_dir_vec.push(
-                std::path::PathBuf::from_str(path.parent().unwrap().to_str().unwrap()).unwrap(),
-            );
-        } else if path.is_dir() {
-            check_dir(path.as_path(), check_dir_cnt, git_dir_vec);
-        }
-    }
-}
+mod cli;
+mod scan_dir;
+use cli::CLI;
+use scan_dir::scan_dir;
 
 fn main() {
+    let cli: CLI = CLI::parse();
+
     // Print basic information about the application.
     let _exe_path_buf = env::current_exe().unwrap();
     let exe_path_str = _exe_path_buf.to_str().unwrap();
     let _cwd_path_buf = env::current_dir().unwrap();
     let cwd_path_str = _cwd_path_buf.to_str().unwrap();
-    println!("lsgit2");
+    println!("lsgit2 v{}", env!("CARGO_PKG_VERSION"));
     println!("\tStarted from `{}`.", exe_path_str);
     println!("\tCurrent working directory: `{}`.", cwd_path_str);
+    println!("\tDepth of search: {}.", cli.depth);
 
-    // Only two optional argument are expected being the directory where to start the search
-    // and the regexp pattern for paths and branch names.
-    let args: Vec<String> = env::args().collect();
-    let err_msg: String;
-    let start_dir = if args.len() == 1 {
-        Ok(env::current_dir().unwrap())
-    } else if args.len() == 2 || args.len() == 3 {
-        let sd = path::PathBuf::from(&args[1]);
-        if !sd.as_path().exists() {
-            err_msg = format!("Path `{}` doesn't exist.", sd.to_str().unwrap());
-            Err(&err_msg[..])
-        } else if !sd.as_path().is_dir() {
-            err_msg = format!("Path `{}` is not a directory.", sd.to_str().unwrap());
-            Err(&err_msg[..])
-        } else {
-            Ok(sd)
+    // Figure out the start directory.
+    let current_dir: PathBuf = env::current_dir().unwrap();
+    let mut start_dir = current_dir.clone();
+    start_dir.push(cli.start_dir);
+    start_dir = match start_dir.canonicalize() {
+        Ok(value) => value,
+        Err(e) => {
+            eprintln!("ERROR: '{}': {}.", start_dir.as_path().to_str().unwrap(), e);
+            process::exit(1);
         }
-    } else {
-        err_msg = format!(
-            "Expecting 0, 1, or 2 arguments, {} arguments were given.",
-            args.len()
-        );
-        Err(&err_msg[..])
     };
-    let start_dir = fs::canonicalize(&start_dir.unwrap()); // convert from relative to absolute
+    if !start_dir.exists() {
+        eprintln!(
+            "ERROR: '{}': Directory does not exist.",
+            start_dir.as_path().to_str().unwrap()
+        );
+        process::exit(1);
+    }
+    if !start_dir.is_dir() {
+        eprintln!(
+            "ERROR: '{}': Not a directory.",
+            start_dir.as_path().to_str().unwrap()
+        );
+        process::exit(2);
+    }
     println!(
         "\tStarting searching from `{}`.",
-        start_dir.as_ref().unwrap().to_str().unwrap()
+        start_dir.to_str().unwrap()
     );
-    // start_dir is Result<PathBuf, Error>
-    // start_dir.as_ref() converts from &Result<T, E> to Result<&T, &E>.
 
-    let regex_pattern = if args.len() == 3 {
-        Regex::new(&args[2]).unwrap()
-    } else {
-        Regex::new(".*").unwrap()
+    // Figure out the pattern.
+    let regex_pattern = match cli.regex_pattern {
+        None => Regex::new(".*").unwrap(),
+        Some(val) => Regex::new(&val).unwrap(),
     };
 
-    let mut check_dir_cnt: i32 = 0;
+    // Start scanning.
+    let mut scan_dir_cnt: i32 = 0;
     let mut repo_abs_paths: Vec<std::path::PathBuf> = Vec::new();
-    check_dir(
-        start_dir.as_ref().unwrap().as_path(),
-        &mut check_dir_cnt,
+    let start_dir_path = start_dir.as_path();
+    scan_dir(
+        start_dir_path,
+        start_dir_path,
+        cli.depth,
+        &mut scan_dir_cnt,
         &mut repo_abs_paths,
     );
     repo_abs_paths.sort();
     use std::str;
 
-    match check_dir_cnt {
+    match scan_dir_cnt {
         0 => println!("\tNo directories were checked."),
         1 => println!("\t1 directory was checked."),
-        _ => println!("\t{} directories were checked.", check_dir_cnt),
+        _ => println!("\t{} directories were checked.", scan_dir_cnt),
     }
     let num_repos = repo_abs_paths.len();
     match num_repos {
@@ -100,7 +87,7 @@ fn main() {
         _ => println!("\t{} git repositories were found.", num_repos),
     }
 
-    let start_dir_comp: Vec<&OsStr> = start_dir.as_ref().unwrap().iter().collect();
+    let start_dir_comp: Vec<&OsStr> = start_dir.iter().collect();
 
     // Fetch repository updates in the background.
     for repo_path_abs in repo_abs_paths.iter() {
